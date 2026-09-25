@@ -5,19 +5,21 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const stored = localStorage.getItem('skillora_user');
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = localStorage.getItem('ml_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
   });
 
   const saveSession = useCallback((token, userData) => {
-    localStorage.setItem('skillora_token', token);
-    localStorage.setItem('skillora_user', JSON.stringify(userData));
+    localStorage.setItem('ml_token', token);
+    localStorage.setItem('ml_user', JSON.stringify(userData));
     setUser(userData);
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('skillora_token');
-    localStorage.removeItem('skillora_user');
+    localStorage.removeItem('ml_token');
+    localStorage.removeItem('ml_user');
     setUser(null);
   }, []);
 
@@ -25,18 +27,23 @@ export function AuthProvider({ children }) {
     const response = await authAPI.login(credentials);
     const { token, user: userData, message } = response.data;
     saveSession(token, userData);
-    return { message };
+    return { message, user: userData };
   }, [saveSession]);
 
   const register = useCallback(async (data) => {
     const response = await authAPI.register(data);
     const { token, user: userData, message } = response.data;
     saveSession(token, userData);
-    return { message };
+    return { message, user: userData };
   }, [saveSession]);
 
+  const updateUser = useCallback((userData) => {
+    localStorage.setItem('ml_user', JSON.stringify(userData));
+    setUser(userData);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, register, logout, updateUser, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

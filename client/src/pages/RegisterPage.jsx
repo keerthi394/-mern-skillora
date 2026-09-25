@@ -1,401 +1,114 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import AuthLayout from '../components/AuthLayout'
-import InputField from '../components/InputField'
-import Button from '../components/Button'
-import { useAuth } from '../context/AuthContext'
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-/* ─── SVG icon helpers ─────────────────────────────────────────────── */
-const UserIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-    <circle cx="12" cy="7" r="4" />
-  </svg>
-)
+export default function RegisterPage() {
+  const { register } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: searchParams.get('role') || 'student' });
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
 
-const MailIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="4" width="20" height="16" rx="2" />
-    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-  </svg>
-)
+  const onChange = (e) => {
+    setForm(p => ({ ...p, [e.target.name]: e.target.value }));
+    setErrors(p => ({ ...p, [e.target.name]: '' }));
+    setApiError('');
+  };
 
-const LockIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-  </svg>
-)
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    const errs = {};
+    if (!form.name.trim()) errs.name = 'Full name is required.';
+    if (!form.email) errs.email = 'Email is required.';
+    if (!form.password || form.password.length < 8) errs.password = 'Password must be at least 8 characters.';
+    if (!form.role) errs.role = 'Please select a role.';
+    if (Object.keys(errs).length) return setErrors(errs);
 
-const EyeIcon = ({ open }) =>
-  open ? (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  ) : (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-      <line x1="1" y1="1" x2="23" y2="23" />
-    </svg>
-  )
+    setLoading(true);
+    try {
+      const { user } = await register(form);
+      navigate(user.role === 'student' ? '/student/profile' : '/mentor/profile', { replace: true });
+    } catch (err) {
+      const data = err.response?.data;
+      if (data?.errors) setErrors(data.errors);
+      else setApiError(data?.message || 'Unable to connect to server.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-/* ─── Roles ─────────────────────────────────────────────────────────── */
-const ROLES = [
-  {
-    id: 'student',
-    label: 'Student',
-    description: 'I want to learn and grow',
-    icon: (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
-        <path d="M6 12v5c3 3 9 3 12 0v-5" />
-      </svg>
-    ),
-  },
-  {
-    id: 'mentor',
-    label: 'Mentor',
-    description: 'I want to teach and guide',
-    icon: (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    ),
-  },
-]
-
-/* ─── Password strength helper ──────────────────────────────────────── */
-function getPasswordStrength(pwd) {
-  if (!pwd) return { score: 0, label: '', color: '' }
-  let score = 0
-  if (pwd.length >= 8) score++
-  if (/[A-Z]/.test(pwd)) score++
-  if (/[0-9]/.test(pwd)) score++
-  if (/[^A-Za-z0-9]/.test(pwd)) score++
-  const map = [
-    { label: '', color: '' },
-    { label: 'Weak', color: 'bg-red-500' },
-    { label: 'Fair', color: 'bg-amber-500' },
-    { label: 'Good', color: 'bg-yellow-400' },
-    { label: 'Strong', color: 'bg-emerald-500' },
-  ]
-  return { score, ...map[score] }
-}
-
-/* ─── Toast ─────────────────────────────────────────────────────────── */
-function Toast({ message, type, visible }) {
-  const colors = {
-    success: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400',
-    error: 'bg-red-500/15 border-red-500/30 text-red-400',
-  }
   return (
-    <div
-      className={[
-        'fixed top-5 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl border text-sm font-medium max-w-sm w-full mx-4 shadow-xl transition-all duration-500',
-        colors[type] || colors.error,
-        visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none',
-      ].join(' ')}
-    >
-      <div className="flex items-center gap-2">
-        {type === 'success' ? (
-          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        ) : (
-          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-            <path fillRule="evenodd" d="M12 2a10 10 0 100 20A10 10 0 0012 2zm-1 5a1 1 0 112 0v5a1 1 0 11-2 0V7zm1 9a1.25 1.25 0 110-2.5A1.25 1.25 0 0112 16z" clipRule="evenodd" />
-          </svg>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1e3a5f 0%, #2a5298 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div style={{ background: 'white', borderRadius: '1rem', padding: '2.5rem', width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <Link to="/">
+            <img src="/logo.png" alt="MentorLink" style={{ width: 64, height: 64, borderRadius: '0.75rem', objectFit: 'cover', marginBottom: '1rem' }} />
+          </Link>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e3a5f' }}>Join MentorLink</h1>
+          <p style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '0.25rem' }}>Bridging Knowledge and Opportunities</p>
+        </div>
+
+        {apiError && (
+          <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '0.5rem', padding: '0.75rem', marginBottom: '1rem', color: '#991b1b', fontSize: '0.875rem' }}>
+            {apiError}
+          </div>
         )}
-        {message}
+
+        <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Role selector */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            {['student', 'mentor'].map(r => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setForm(p => ({ ...p, role: r }))}
+                style={{
+                  padding: '0.875rem',
+                  border: `2px solid ${form.role === r ? '#1e3a5f' : '#e2e8f0'}`,
+                  borderRadius: '0.5rem',
+                  background: form.role === r ? '#eff6ff' : 'white',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>{r === 'student' ? '🎓' : '👨‍💼'}</div>
+                <div style={{ fontWeight: 600, color: '#1e3a5f', textTransform: 'capitalize', fontSize: '0.9rem' }}>{r}</div>
+              </button>
+            ))}
+          </div>
+          {errors.role && <span style={{ color: '#ef4444', fontSize: '0.8rem' }}>{errors.role}</span>}
+
+          <div className="form-group">
+            <label>Full Name</label>
+            <input id="reg-name" name="name" type="text" className="form-input" placeholder="John Doe" value={form.name} onChange={onChange} style={errors.name ? { borderColor: '#ef4444' } : {}} />
+            {errors.name && <span style={{ color: '#ef4444', fontSize: '0.8rem' }}>{errors.name}</span>}
+          </div>
+
+          <div className="form-group">
+            <label>Email address</label>
+            <input id="reg-email" name="email" type="email" className="form-input" placeholder="you@example.com" value={form.email} onChange={onChange} style={errors.email ? { borderColor: '#ef4444' } : {}} />
+            {errors.email && <span style={{ color: '#ef4444', fontSize: '0.8rem' }}>{errors.email}</span>}
+          </div>
+
+          <div className="form-group">
+            <label>Password</label>
+            <input id="reg-password" name="password" type="password" className="form-input" placeholder="Minimum 8 characters" value={form.password} onChange={onChange} style={errors.password ? { borderColor: '#ef4444' } : {}} />
+            {errors.password && <span style={{ color: '#ef4444', fontSize: '0.8rem' }}>{errors.password}</span>}
+          </div>
+
+          <button id="reg-submit" type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center', padding: '0.75rem', marginTop: '0.5rem' }}>
+            {loading ? 'Creating account...' : `Create ${form.role} account`}
+          </button>
+        </form>
+
+        <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.875rem', color: '#64748b' }}>
+          Already have an account?{' '}
+          <Link to="/login" style={{ color: '#1e3a5f', fontWeight: 600, textDecoration: 'none' }}>Sign in</Link>
+        </p>
       </div>
     </div>
-  )
+  );
 }
-
-/* ─── Component ─────────────────────────────────────────────────────── */
-function RegisterPage() {
-  const { register } = useAuth()
-  const navigate = useNavigate()
-
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    role: '',
-  })
-  const [errors, setErrors] = useState({})
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
-
-  const strength = getPasswordStrength(form.password)
-
-  const showToast = (message, type = 'success') => {
-    setToast({ visible: true, message, type })
-    setTimeout(() => setToast((t) => ({ ...t, visible: false })), 3500)
-  }
-
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
-    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }))
-  }
-
-  const selectRole = (roleId) => {
-    setForm((prev) => ({ ...prev, role: roleId }))
-    if (errors.role) setErrors((prev) => ({ ...prev, role: '' }))
-  }
-
-  const validate = () => {
-    const errs = {}
-    if (!form.name.trim()) errs.name = 'Full name is required.'
-    if (!form.email.trim()) errs.email = 'Email is required.'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'Enter a valid email address.'
-    if (!form.password) errs.password = 'Password is required.'
-    else if (form.password.length < 8) errs.password = 'Password must be at least 8 characters.'
-    if (!form.confirmPassword) errs.confirmPassword = 'Please confirm your password.'
-    else if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match.'
-    if (!form.role) errs.role = 'Please select a role to continue.'
-    return errs
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    const errs = validate()
-    if (Object.keys(errs).length > 0) return setErrors(errs)
-
-    setLoading(true)
-    try {
-      const { message } = await register({
-        name: form.name,
-        email: form.email,
-        password: form.password,
-        role: form.role,
-      })
-      showToast(message || 'Account created successfully!', 'success')
-      setTimeout(() => navigate('/dashboard'), 1200)
-    } catch (err) {
-      const data = err.response?.data
-      if (data?.errors) {
-        setErrors(data.errors)
-      }
-      showToast(data?.message || 'Something went wrong. Please try again.', 'error')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <>
-      <Toast message={toast.message} type={toast.type} visible={toast.visible} />
-      <AuthLayout
-        title="Create your account"
-        subtitle="Join thousands of students and mentors on Skillora"
-      >
-        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
-
-          {/* Full Name */}
-          <InputField
-            id="name"
-            label="Full name"
-            type="text"
-            value={form.name}
-            onChange={handleChange}
-            placeholder="Jane Doe"
-            icon={<UserIcon />}
-            error={errors.name}
-            required
-            autoComplete="name"
-          />
-
-          {/* Email */}
-          <InputField
-            id="email"
-            label="Email address"
-            type="email"
-            value={form.email}
-            onChange={handleChange}
-            placeholder="you@example.com"
-            icon={<MailIcon />}
-            error={errors.email}
-            required
-            autoComplete="email"
-          />
-
-          {/* Password */}
-          <div className="flex flex-col gap-1.5">
-            <InputField
-              id="password"
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              value={form.password}
-              onChange={handleChange}
-              placeholder="Min. 8 characters"
-              icon={<LockIcon />}
-              rightElement={
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="text-slate-500 hover:text-slate-300 transition-colors duration-150"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  <EyeIcon open={showPassword} />
-                </button>
-              }
-              error={errors.password}
-              required
-              autoComplete="new-password"
-            />
-
-            {/* Password strength bar */}
-            {form.password && (
-              <div className="flex items-center gap-2 mt-1">
-                <div className="flex-1 flex gap-1">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className={[
-                        'h-1 flex-1 rounded-full transition-all duration-300',
-                        i <= strength.score ? strength.color : 'bg-white/10',
-                      ].join(' ')}
-                    />
-                  ))}
-                </div>
-                <span
-                  className={[
-                    'text-xs font-medium transition-colors duration-200',
-                    strength.score <= 1 ? 'text-red-400' :
-                    strength.score === 2 ? 'text-amber-400' :
-                    strength.score === 3 ? 'text-yellow-400' :
-                    'text-emerald-400',
-                  ].join(' ')}
-                >
-                  {strength.label}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Confirm Password */}
-          <InputField
-            id="confirmPassword"
-            label="Confirm password"
-            type={showConfirm ? 'text' : 'password'}
-            value={form.confirmPassword}
-            onChange={handleChange}
-            placeholder="Re-enter your password"
-            icon={<LockIcon />}
-            rightElement={
-              <button
-                type="button"
-                onClick={() => setShowConfirm((v) => !v)}
-                className="text-slate-500 hover:text-slate-300 transition-colors duration-150"
-                aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'}
-              >
-                <EyeIcon open={showConfirm} />
-              </button>
-            }
-            error={errors.confirmPassword}
-            required
-            autoComplete="new-password"
-          />
-
-          {/* Role selector */}
-          <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-slate-300">
-              I am a<span className="text-violet-400 ml-0.5">*</span>
-            </span>
-            <div className="grid grid-cols-2 gap-3">
-              {ROLES.map((r) => {
-                const selected = form.role === r.id
-                return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    id={`role-${r.id}`}
-                    onClick={() => selectRole(r.id)}
-                    className={[
-                      'relative flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-all duration-200 cursor-pointer',
-                      selected
-                        ? 'border-violet-500 bg-violet-500/10 text-violet-300 shadow-lg shadow-violet-500/10'
-                        : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:bg-white/8 hover:text-slate-300',
-                    ].join(' ')}
-                    aria-pressed={selected}
-                  >
-                    <div
-                      className={[
-                        'w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-200',
-                        selected ? 'bg-violet-500/20 text-violet-400' : 'bg-white/5 text-slate-500',
-                      ].join(' ')}
-                    >
-                      {r.icon}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold leading-none mb-0.5">{r.label}</p>
-                      <p className="text-xs opacity-70 leading-tight">{r.description}</p>
-                    </div>
-                    {selected && (
-                      <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-violet-500 flex items-center justify-center">
-                        <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            {errors.role && (
-              <p className="text-xs text-red-400 flex items-center gap-1">
-                <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                  <path fillRule="evenodd" d="M12 2a10 10 0 100 20A10 10 0 0012 2zm-1 5a1 1 0 112 0v5a1 1 0 11-2 0V7zm1 9a1.25 1.25 0 110-2.5A1.25 1.25 0 0112 16z" clipRule="evenodd" />
-                </svg>
-                {errors.role}
-              </p>
-            )}
-          </div>
-
-          {/* Submit */}
-          <Button type="submit" loading={loading} fullWidth>
-            {loading ? 'Creating account…' : 'Create Account'}
-          </Button>
-
-          {/* Terms notice */}
-          <p className="text-center text-xs text-slate-500 leading-relaxed">
-            By creating an account, you agree to our{' '}
-            <button type="button" className="text-violet-400 hover:text-violet-300 transition-colors">Terms of Service</button>
-            {' '}and{' '}
-            <button type="button" className="text-violet-400 hover:text-violet-300 transition-colors">Privacy Policy</button>.
-          </p>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="text-xs text-slate-500 uppercase tracking-wider">or</span>
-            <div className="flex-1 h-px bg-white/10" />
-          </div>
-
-          {/* Login link */}
-          <p className="text-center text-sm text-slate-400">
-            Already have an account?{' '}
-            <Link
-              to="/login"
-              className="text-violet-400 font-semibold hover:text-violet-300 transition-colors duration-150"
-            >
-              Sign in →
-            </Link>
-          </p>
-        </form>
-      </AuthLayout>
-    </>
-  )
-}
-
-export default RegisterPage
