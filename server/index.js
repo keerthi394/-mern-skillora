@@ -13,9 +13,17 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'http://localhost:4173',
+  'https://mern-skillora.vercel.app', // Vercel production frontend
 ];
+
+// Support comma-separated CLIENT_URL list in env for flexibility
 if (process.env.CLIENT_URL) {
-  allowedOrigins.push(process.env.CLIENT_URL);
+  process.env.CLIENT_URL.split(',').forEach((url) => {
+    const trimmed = url.trim();
+    if (trimmed && !allowedOrigins.includes(trimmed)) {
+      allowedOrigins.push(trimmed);
+    }
+  });
 }
 
 app.use(cors({

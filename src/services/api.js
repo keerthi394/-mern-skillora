@@ -1,10 +1,14 @@
 import axios from 'axios';
 
-// Axios instance — proxy handles /api → http://localhost:5000
+// In production (Vercel), VITE_API_URL points to the Render backend.
+// In local dev, Vite proxy forwards /api → http://localhost:5000.
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   timeout: 10000,
+  withCredentials: false,
 });
 
 // Attach JWT token to every request if present
